@@ -85,3 +85,74 @@ volcano <- function (res, outjpeg,mode = "gene",geneAnnotation = "", nlabel = 10
     print(p)
   dev.off()
 }
+
+volcano1 <- function() {
+  # 加载必要的包
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+# 读取数据
+data <- read.csv("patient-control_diff_new.csv")
+# 数据处理：计算-log10(P_Value)，添加显著性标记
+data <- data %>%
+  mutate(
+    logP = -log10(P_Value),
+    color_group = case_when(
+      P_Value >= 0.05 ~ "not_sig",
+      log2FC > 1 ~ "up", # 上调（使用阈值1）
+      log2FC < -1 ~ "down", # 下调（使用阈值-1）
+      TRUE ~ "not_sig"            # 中间区域
+    )
+  )
+
+# 提取log2FC绝对值最大且P<0.05的10个基因（按绝对值排序）
+top_genes <- data %>%
+  filter(P_Value < 0.05) %>%
+  group_by(GENE_SYMBOL) %>% # 按基因符号去重
+  slice_max(abs(log2FC), n = 1) %>% # 取每个基因的最大绝对值
+  ungroup() %>%
+  arrange(desc(abs(log2FC))) %>%
+  head(10) # 取前10个
+
+# 定义新的配色方案
+point_colors <- c("up" = "#CB6CB1", "down" = "#13A3A6", "not_sig" = "gray80")
+label_fill <- c("up" = "#ffa500", "down" = "#B3A9EB") # 橙色和浅紫色
+
+# 绘制火山图
+ggplot(data, aes(x = log2FC, y = logP)) +
+  geom_point(aes(color = color_group), alpha = 0.7, size = 2.5) +
+  scale_color_manual(values = point_colors) +
+
+# 添加辅助线
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "gray50", linewidth = 0.5) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "gray50", linewidth = 0.5) +
+
+# 添加基因标签
+  geom_label_repel(
+    data = top_genes,
+    aes(label = GENE_SYMBOL, fill = ifelse(log2FC > 0, "up", "down")),
+    color = "white",
+    box.padding = 1.2, # 增加标签间距
+    segment.color = "grey30", # 连接线颜色
+    nudge_x = ifelse(top_genes$log2FC > 0, 3, -3), # 更强制偏移量
+    direction = "both", # 允许双向调整
+    max.overlaps = 20, # 增加最大重叠容忍度
+    size = 3.5                        # 标签文字大小
+  ) +
+
+# 颜色填充映射
+  scale_fill_manual(values = label_fill) +
+
+# 坐标轴标签
+  labs(x = "log2(Fold Change)", y = "-log10(P-Value)") +
+
+# 主题设置
+  theme_classic() + # 经典主题
+  theme(
+    legend.position = "none", # 隐藏图例
+    axis.title = element_text(size = 12, face = "bold"), # 加粗坐标轴标题
+    axis.text = element_text(size = 10) # 坐标轴文字大小
+  ) +
+# 坐标轴扩展范围（确保标签可见）
+  expand_limits(x = c(max(abs(data$log2FC)) * 1.2 * c(-1, 1)))
+}
