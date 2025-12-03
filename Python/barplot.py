@@ -192,15 +192,18 @@ def plot_mutation_distribution_multi(
         groups: List[str] = None,
         group_colors: dict = None,
         title: str = "Func.refGene Mutation Distribution (Proportion)",
-        save_path: Union[str, Path] = None,
-        legend_width:float=0.2,
-        figsize:tuple = (12, 6)):
+        save_path: Union[str, str] = None,
+        legend_width: float = 0.25,
+        figsize: tuple = (12, 6),
+        legend_fontsize: int = 13,
+        legend_title_fontsize: int = 16
+    ):
 
     df_prop = df_counts.div(df_counts.sum(axis=0), axis=1)
 
     fig, ax = plt.subplots(figsize=figsize)
 
-    # ======== 核心：右侧预留空间给图例 ========
+    # ======== 右侧预留空间给图例 ========
     fig.subplots_adjust(right=1 - legend_width)
 
     # 堆叠柱状图
@@ -258,12 +261,14 @@ def plot_mutation_distribution_multi(
         handles=mutation_patches,
         title="Mutation Type",
         bbox_to_anchor=(1.02, 1),
-        loc="upper left"
+        loc="upper left",
+        fontsize=legend_fontsize,
+        title_fontsize=legend_title_fontsize
     )
     ax.add_artist(legend1)
 
     # -------------------------------
-    # 第二个图例：样本分组（绘制在右下）
+    # 第二个图例：样本分组
     # -------------------------------
     if groups is not None:
         unique_groups = sorted(set(groups))
@@ -271,18 +276,21 @@ def plot_mutation_distribution_multi(
             mpatches.Patch(color=group_colors[g], label=g)
             for g in unique_groups
         ]
-
         ax.legend(
             handles=group_patches,
             title="Sample Group",
             bbox_to_anchor=(1.02, 0.25),
-            loc="upper left"
+            loc="upper left",
+            fontsize=legend_fontsize,
+            title_fontsize=legend_title_fontsize
         )
 
-    ax.set_xlabel("Sample")
-    ax.set_ylabel("Proportion")
-    ax.set_title(title)
+    ax.set_xlabel("Sample", fontsize=legend_title_fontsize)
+    ax.set_ylabel("Proportion", fontsize=legend_title_fontsize)
+    ax.set_title(title, fontsize=legend_title_fontsize)
     ax.set_xticklabels(xlabels, rotation=45, ha='right')
+
+    plt.tight_layout()
 
     if save_path:
         plt.savefig(save_path, dpi=300)
