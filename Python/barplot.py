@@ -1,8 +1,11 @@
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 import textwrap
+from pathlib import Path
+from typing import List, Union
 
 
 def TEfamily(
@@ -179,6 +182,110 @@ def GSEA_BarPlot_Enhanced(
     plt.tight_layout()
     plt.savefig(outplot, dpi=300, bbox_inches="tight")
     plt.close()
+
+# -----------------------------
+# 函数3：堆叠柱状图（支持 x 轴彩色标签 + 样本分组图例）
+# -----------------------------
+def plot_mutation_distribution_multi(
+        df_counts: pd.DataFrame,
+        xlabels: List[str] = None,
+        groups: List[str] = None,
+        group_colors: dict = None,
+        title: str = "Func.refGene Mutation Distribution (Proportion)",
+        save_path: Union[str, Path] = None,
+        legend_width:float=0.2,
+        figsize:tuple = (12, 6)):
+
+    df_prop = df_counts.div(df_counts.sum(axis=0), axis=1)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # ======== 核心：右侧预留空间给图例 ========
+    fig.subplots_adjust(right=1 - legend_width)
+
+    # 堆叠柱状图
+    df_prop.T.plot(
+        kind="bar",
+        stacked=True,
+        colormap="tab20",
+        width=0.8,
+        ax=ax,
+        legend=False
+    )
+
+    n_samples = df_counts.shape[1]
+
+    # -------------------------------
+    # X 轴标签设置
+    # -------------------------------
+    if xlabels is None:
+        xlabels = df_counts.columns.tolist()
+
+    if len(xlabels) != n_samples:
+        raise ValueError("xlabels 长度必须与样本数量一致")
+
+    xlabel_colors = ["black"] * n_samples
+
+    # -------------------------------
+    # 根据分组上色
+    # -------------------------------
+    if groups is not None:
+        if len(groups) != n_samples:
+            raise ValueError("groups 长度必须与样本数量一致")
+
+        if group_colors is None:
+            unique_groups = list(dict.fromkeys(groups))
+            cmap = plt.get_cmap("tab10")
+            group_colors = {g: cmap(i) for i, g in enumerate(unique_groups)}
+
+        xlabel_colors = [group_colors[g] for g in groups]
+
+    # 设置 x 轴颜色
+    for label, c in zip(ax.get_xticklabels(), xlabel_colors):
+        label.set_color(c)
+
+    # -------------------------------
+    # 第一个图例：突变类型
+    # -------------------------------
+    mutation_types = df_prop.index.tolist()
+    cmap = plt.get_cmap("tab20")
+    mutation_patches = [
+        mpatches.Patch(color=cmap(i), label=mutation_types[i])
+        for i in range(len(mutation_types))
+    ]
+
+    legend1 = ax.legend(
+        handles=mutation_patches,
+        title="Mutation Type",
+        bbox_to_anchor=(1.02, 1),
+        loc="upper left"
+    )
+    ax.add_artist(legend1)
+
+    # -------------------------------
+    # 第二个图例：样本分组（绘制在右下）
+    # -------------------------------
+    if groups is not None:
+        unique_groups = sorted(set(groups))
+        group_patches = [
+            mpatches.Patch(color=group_colors[g], label=g)
+            for g in unique_groups
+        ]
+
+        ax.legend(
+            handles=group_patches,
+            title="Sample Group",
+            bbox_to_anchor=(1.02, 0.25),
+            loc="upper left"
+        )
+
+    ax.set_xlabel("Sample")
+    ax.set_ylabel("Proportion")
+    ax.set_title(title)
+    ax.set_xticklabels(xlabels, rotation=45, ha='right')
+
+    if save_path:
+        plt.savefig(save_path, dpi=300)
 
 
 if __name__ == '__main__':
