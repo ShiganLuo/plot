@@ -3,6 +3,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import numpy as np
+import matplotlib.gridspec as gridspec
 
 def plot_heatmap(
         heatmap_data: pd.DataFrame,
@@ -271,6 +272,67 @@ def plot_heatmap_with_group_colors(
     plt.savefig(outplot, dpi=300)
     plt.close()
 
+def plot_heatmap_with_colgroup(
+        data: pd.DataFrame,
+        col_group_map: dict,
+        row_labels: dict = None,
+        outplot: str = "heatmap.png"
+    ):
+    """
+    不聚类热图，x轴列名染色显示分组，列分组图例在颜色条下方，每个分组独占一行
+    """
+    if row_labels:
+        data = data.rename(index=row_labels)
+
+    cmap = sns.color_palette("RdBu_r", as_cmap=True)
+    vmin, vmax = np.nanmin(data.values), np.nanmax(data.values)
+
+    fig, ax = plt.subplots(figsize=(max(8, data.shape[1]*0.6), max(6, data.shape[0]*0.4)))
+
+    # 右侧颜色条
+    cbar_ax = fig.add_axes([0.88, 0.25, 0.03, 0.7])
+    sns.heatmap(
+        data,
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        ax=ax,
+        cbar_ax=cbar_ax,
+        linewidths=0.5,
+        linecolor='gray'
+    )
+
+    # 列分组颜色
+    col_groups = pd.Series(col_group_map)
+    unique_groups = col_groups.unique()
+    palette = sns.color_palette("Set2", n_colors=len(unique_groups))
+    group_colors = dict(zip(unique_groups, palette))
+
+    # x轴标签染色
+    for xtick_label in ax.get_xticklabels():
+        label = xtick_label.get_text()
+        if label in col_groups:
+            xtick_label.set_color(group_colors[col_groups[label]])
+            xtick_label.set_rotation(45)
+            xtick_label.set_horizontalalignment('right')
+
+    # 调整子图区域，留出下边距和右边距
+    fig.subplots_adjust(bottom=0.2, right=0.78, top=0.95)
+
+    # 绘制分组图例，位于右侧颜色条下方，每个分组占一行
+    legend_handles = [plt.Line2D([0], [0], color=color, lw=6) for color in group_colors.values()]
+    fig.legend(
+        handles=legend_handles,
+        labels=list(group_colors.keys()),
+        loc='center right',
+        bbox_to_anchor=(1.0, 0.15),  # 下方偏移
+        ncol=1,
+        frameon=False,
+        title=""
+    )
+
+    plt.savefig(outplot, dpi=300)
+    plt.close()
 def long_to_wide(
         df: pd.DataFrame,
         index_col: str,
