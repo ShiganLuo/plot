@@ -44,7 +44,7 @@ calc_plot_height <- function(n,
 ## Prepare ranked list
 ## =========================
 prepare_ranked_list <- function(ranked_df) {
-
+  ### ranked_df: data.frame with gene_name and log2FoldChange columns 
   if (!all(c("gene_name", "log2FoldChange") %in% colnames(ranked_df))) {
     log_msg("ERROR",
             "ranked_df must contain gene_name and log2FoldChange",
@@ -282,6 +282,10 @@ plot_enrichment_gseapy_style <- function(pathway,
 
   p_grad <- gradient_bar_panel(length(ranked_list))
   ## ================= Panel 3 =================
+  # score represent log2FC in there,decided by ranked_list
+  # scores <- as.numeric(ranked_list)
+  # zero_cross_idx <- which(scores < 0)[1]
+  # if (is.na(zero_cross_idx)) zero_cross_idx <- length(scores)
   p3 <- ggplot(df_rank, aes(position, score, fill = score)) +
     geom_area() +
     scale_fill_gradient2(
