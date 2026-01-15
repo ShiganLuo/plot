@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import textwrap
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Dict
 from scipy.stats import chi2_contingency
 
 def TEfamily(
@@ -186,31 +186,60 @@ def GSEA_BarPlot_Enhanced(
 # -----------------------------
 # 函数3：堆叠柱状图（支持 x 轴彩色标签 + 样本分组图例）
 # -----------------------------
-def plot_mutation_distribution_multi(
-        df_counts: pd.DataFrame,
-        xlabels: List[str] = None,
-        groups: List[str] = None,
-        group_colors: dict = None,
-        title: str = "Func.refGene Mutation Distribution (Proportion)",
-        save_path: Union[str, str] = None,
-        legend_width: float = 0.25,
-        figsize: tuple = (12, 6),
-        legend_fontsize: int = 13,
-        legend_title_fontsize: int = 16
-    ):
+def plot_stacking_bar(
+    df_counts: pd.DataFrame,
+    xlabels: List[str] = None,
+    groups: List[str] = None,
+    group_colors: Dict[str, str] = None,
+    title: str = "Mutation Distribution (Proportion)",
+    xlabel: str = "Sample",
+    ylabel: str = "Proportion",
+    legend_title_type: str = "Mutation Type",
+    legend_title_group: str = "Sample Group",
+    save_path: Union[str, Path] = None,
+    legend_width: float = 0.25,
+    figsize: tuple = (12, 6),
+    legend_fontsize: int = 13,
+    legend_title_fontsize: int = 16,
+    rotation: int = 45,
+    colormap: str = "tab20"
+):
+    """
+    绘制突变分布的堆叠柱状图，支持比例转化、样本分组上色以及双图例显示。
 
-    df_prop = df_counts.div(df_counts.sum(axis=0), axis=1)
+    Args:
+        df_counts (pd.DataFrame): 输入数据，行名为突变类型，列名为样本名。
+        xlabels (List[str], optional): X轴刻度标签。默认为 DataFrame 的列名。
+        groups (List[str], optional): 样本对应的分组信息，长度需与样本数一致。
+        group_colors (Dict[str, str], optional): 分组名到颜色值的映射字典。
+        title (str, optional): 图表标题。
+        xlabel (str, optional): X轴标题。
+        ylabel (str, optional): Y轴标题。
+        legend_title_type (str, optional): 突变类型图例的标题。
+        legend_title_group (str, optional): 分组图例的标题。
+        save_path (Union[str, Path], optional): 图片保存路径。
+        legend_width (float, optional): 右侧预留给图例的宽度比例 (0-1)。
+        figsize (tuple, optional): 画布尺寸。
+        legend_fontsize (int, optional): 图例字体大小。
+        legend_title_fontsize (int, optional): 图例标题及轴标签字体大小。
+        rotation (int, optional): X轴刻度标签旋转角度。
+        colormap (str, optional): 柱状图使用的颜色映射。
+    """
+    
+    # 1. 比例转化：处理单列或多列情况
+    # 确保 sum 不为 0 以免除以 0
+    df_prop = df_counts.div(df_counts.sum(axis=0).replace(0, 1), axis=1)
 
     fig, ax = plt.subplots(figsize=figsize)
 
     # ======== 右侧预留空间给图例 ========
     fig.subplots_adjust(right=1 - legend_width)
 
-    # 堆叠柱状图
+    # 2. 绘制堆叠柱状图 (转置后行为样本，列为类型)
     df_prop.T.plot(
         kind="bar",
         stacked=True,
-        colormap="tab20",
+        colormap=colormap,
         width=0.8,
         ax=ax,
         legend=False
@@ -225,45 +254,49 @@ def plot_mutation_distribution_multi(
         xlabels = df_counts.columns.tolist()
 
     if len(xlabels) != n_samples:
-        raise ValueError("xlabels 长度必须与样本数量一致")
+        raise ValueError("xlabels 长度必须与样本数量 (columns) 一致")
 
+    # 设置刻度标签（针对单组样本，ax.set_xticklabels 前需确保有 ticks）
+    ax.set_xticks(range(n_samples))
+    ax.set_xticklabels(xlabels, rotation=rotation, ha='right')
+
+    # -------------------------------
+    # 根据分组上色 (X轴标签颜色)
+    # -------------------------------
     xlabel_colors = ["black"] * n_samples
-
-    # -------------------------------
-    # 根据分组上色
-    # -------------------------------
     if groups is not None:
         if len(groups) != n_samples:
             raise ValueError("groups 长度必须与样本数量一致")
 
         if group_colors is None:
             unique_groups = list(dict.fromkeys(groups))
-            cmap = plt.get_cmap("tab10")
-            group_colors = {g: cmap(i) for i, g in enumerate(unique_groups)}
+            cmap_group = plt.get_cmap("tab10")
+            group_colors = {g: cmap_group(i) for i, g in enumerate(unique_groups)}
 
         xlabel_colors = [group_colors[g] for g in groups]
 
-    # 设置 x 轴颜色
     for label, c in zip(ax.get_xticklabels(), xlabel_colors):
         label.set_color(c)
 
     # -------------------------------
-    # 第一个图例：突变类型
+    # 第一个图例：类型
     # -------------------------------
-    mutation_types = df_prop.index.tolist()
-    cmap = plt.get_cmap("tab20")
-    mutation_patches = [
-        mpatches.Patch(color=cmap(i), label=mutation_types[i])
-        for i in range(len(mutation_types))
+    legend_types = df_prop.index.tolist()
+    logger.info(legend_types)
+    cmap_types = plt.get_cmap(colormap)
+    types_patches = [
+        mpatches.Patch(color=cmap_types(i / max(len(legend_types)-1, 1)), label=legend_types[i])
+        for i in range(len(legend_types))
     ]
 
     legend1 = ax.legend(
-        handles=mutation_patches,
-        title="Mutation Type",
+        handles=types_patches,
+        title=legend_title_type,
         bbox_to_anchor=(1.02, 1),
         loc="upper left",
         fontsize=legend_fontsize,
-        title_fontsize=legend_title_fontsize
+        title_fontsize=legend_title_fontsize,
+        frameon=False
     )
     ax.add_artist(legend1)
 
@@ -271,29 +304,40 @@ def plot_mutation_distribution_multi(
     # 第二个图例：样本分组
     # -------------------------------
     if groups is not None:
-        unique_groups = sorted(set(groups))
+        # 保持分组出现的原始顺序
+        unique_groups = list(dict.fromkeys(groups))
         group_patches = [
             mpatches.Patch(color=group_colors[g], label=g)
             for g in unique_groups
         ]
         ax.legend(
             handles=group_patches,
-            title="Sample Group",
-            bbox_to_anchor=(1.02, 0.25),
+            title=legend_title_group,
+            bbox_to_anchor=(1.02, 0.3),
             loc="upper left",
             fontsize=legend_fontsize,
-            title_fontsize=legend_title_fontsize
+            title_fontsize=legend_title_fontsize,
+            frameon=False
         )
 
-    ax.set_xlabel("Sample", fontsize=legend_title_fontsize)
-    ax.set_ylabel("Proportion", fontsize=legend_title_fontsize)
-    ax.set_title(title, fontsize=legend_title_fontsize)
-    ax.set_xticklabels(xlabels, rotation=45, ha='right')
-
-    plt.tight_layout()
+    # -------------------------------
+    # 轴细节优化
+    # -------------------------------
+    ax.set_xlabel(xlabel, fontsize=legend_title_fontsize)
+    ax.set_ylabel(ylabel, fontsize=legend_title_fontsize)
+    ax.set_title(title, fontsize=legend_title_fontsize + 2)
+    
+    # 移除上方和右侧边框
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
 
     if save_path:
-        plt.savefig(save_path, dpi=300)
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=300) # bbox_inches='tight' is not allowed
+        plt.close(fig)
+    else:
+        plt.show()
 
 def plot_comparison_broken_bar(
     df,
