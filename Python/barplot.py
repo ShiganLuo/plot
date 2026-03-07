@@ -707,12 +707,66 @@ def plot_comparison_broken_bar(
     plt.close()
 
 
-def plot_bar(
-    df: pd.DataFrame,
-    out_png: str,
-):
-    plt.bar(df["AminoAcid"], df["Similarity_Local"], alpha=0.6, label="Local Alignment", color="blue")
+def plot_biax_bar(
+        local_alignment_file: str,
+        global_alignment_file: str,
+        out_png: str = "alignment_comparison.png"
+    ):
+    """
+    Plot alignment comparison using dual y-axis (Local vs Global).
+    """
 
+    # 读取数据
+    local_df = pd.read_csv(local_alignment_file, sep="\t")
+    global_df = pd.read_csv(global_alignment_file, sep="\t")
+
+    # 合并数据
+    df = pd.merge(local_df, global_df, on="AminoAcid", suffixes=("_Local", "_Global"))
+
+    # 按 global similarity 排序
+    df = df.sort_values("Similarity_Global", ascending=False)
+
+    # x轴位置
+    x = np.arange(len(df["AminoAcid"]))
+    width = 0.35
+
+    # 创建双y轴
+    fig, ax1 = plt.subplots(figsize=(10,5))
+    ax2 = ax1.twinx()
+
+    # 绘制柱状图
+    bars1 = ax1.bar(
+        x - width/2,
+        df["Similarity_Local"],
+        width,
+        label="Local Alignment",
+        color="steelblue",
+        alpha=0.8
+    )
+
+    bars2 = ax2.bar(
+        x + width/2,
+        df["Similarity_Global"],
+        width,
+        label="Global Alignment",
+        color="orange",
+        alpha=0.8
+    )
+
+    # 轴标签
+    ax1.set_xlabel("Amino Acid")
+    ax1.set_ylabel("Local Similarity")
+    ax2.set_ylabel("Global Similarity")
+
+    # x轴标签
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(df["AminoAcid"], rotation=45)
+
+    # 保存图
+    plt.tight_layout()
+    plt.savefig(out_png, dpi=300)
+    plt.close()
+    
 if __name__ == '__main__':
     # DEG_file = "/disk5/luosg/scRNAseq/output/result/DEG/Intestine/table/combined_groupCKO_chang_10XSC3_B_cell-combined_groupWT_chang_10XSC3_B_cell_DEG.tsv"
     # rmsk_file = "/ChIP_seq_2/Data/index/Mus_musculus/UCSC/mm39/rmsk_mm39.txt.gz"

@@ -127,35 +127,66 @@ def plot_gsea_from_csv(
     return color_map
 
 
-def plot_alignment_results(
+def plot_biax_line(
         local_alignment_file: str,
         global_alignment_file: str,
-        out_png: str = "alignment_comparison.png"
+        out_png: str = "alignment_comparison_line.png"
     ):
     """
-    Function: Plot alignment results from local and global alignment.
-    Parameters:
-        - local_alignment_file : str
-            Path to local alignment results file (TSV)
-        - global_alignment_file : str
-            Path to global alignment results file (TSV)
-    Returns:
-        None
-    Note:
-        x-axis wouldn't automatically adjust to the same value, so make sure the "AminoAcid" column in both files have the same range and values for proper comparison.
+    Plot alignment comparison using dual y-axis line chart.
     """
+
+    # 读取数据
     local_df = pd.read_csv(local_alignment_file, sep="\t")
     global_df = pd.read_csv(global_alignment_file, sep="\t")
+
+    # 合并数据
     df = pd.merge(local_df, global_df, on="AminoAcid", suffixes=("_Local", "_Global"))
 
+    # 排序（可选）
+    df = df.sort_values("Similarity_Global", ascending=False)
 
-    plt.plot(df["AminoAcid"], df["Similarity_Local"], label="Local Alignment")
-    plt.plot(df["AminoAcid"], df["Similarity_Global"], label="Global Alignment")
+    # 创建画布
+    fig, ax1 = plt.subplots(figsize=(10,5))
 
-    plt.xlabel("Amino Acid")
-    plt.ylabel("Similarity")
-    plt.legend()
-    plt.savefig(out_png, dpi=300, bbox_inches='tight')
+    # 创建第二个y轴
+    ax2 = ax1.twinx()
+
+    # Local 折线
+    line1 = ax1.plot(
+        df["AminoAcid"],
+        df["Similarity_Local"],
+        marker="o",
+        color="steelblue",
+        label="Local Alignment"
+    )
+
+    # Global 折线
+    line2 = ax2.plot(
+        df["AminoAcid"],
+        df["Similarity_Global"],
+        marker="s",
+        color="orange",
+        label="Global Alignment"
+    )
+
+    # 轴标签
+    ax1.set_xlabel("Amino Acid")
+    ax1.set_ylabel("Local Similarity")
+    ax2.set_ylabel("Global Similarity")
+
+    # x轴旋转
+    plt.xticks(rotation=45)
+
+    # 合并图例
+    lines = line1 + line2
+    labels = [l.get_label() for l in lines]
+    ax1.legend(lines, labels, loc="upper right")
+
+    # 保存
+    plt.tight_layout()
+    plt.savefig(out_png, dpi=300)
+    plt.close()
 
 if __name__ == "__main__":
     # run_gsva(
