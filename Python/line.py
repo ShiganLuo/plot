@@ -171,9 +171,14 @@ def plot_biax_line(
     )
 
     # 轴标签
-    ax1.set_xlabel("Amino Acid")
-    ax1.set_ylabel("Local Similarity")
-    ax2.set_ylabel("Global Similarity")
+    ax1.set_ylabel("Max Score", color="steelblue")
+    ax1.tick_params(axis='y', colors="steelblue")
+    ax1.spines['left'].set_color("steelblue")
+
+    ax2.set_ylabel("Global Similarity", color="orange")
+    ax2.tick_params(axis='y', colors="orange")
+    ax2.spines['right'].set_color("orange")
+    ax2.spines['left'].set_color("none")  # 隐藏左侧边框
 
     # x轴旋转
     plt.xticks(rotation=45)
