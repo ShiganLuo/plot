@@ -126,6 +126,37 @@ def plot_gsea_from_csv(
     print(f"图保存到: {out_png}")
     return color_map
 
+
+def plot_alignment_results(
+        local_alignment_file: str,
+        global_alignment_file: str,
+        out_png: str = "alignment_comparison.png"
+    ):
+    """
+    Function: Plot alignment results from local and global alignment.
+    Parameters:
+        - local_alignment_file : str
+            Path to local alignment results file (TSV)
+        - global_alignment_file : str
+            Path to global alignment results file (TSV)
+    Returns:
+        None
+    Note:
+        x-axis wouldn't automatically adjust to the same value, so make sure the "AminoAcid" column in both files have the same range and values for proper comparison.
+    """
+    local_df = pd.read_csv(local_alignment_file, sep="\t")
+    global_df = pd.read_csv(global_alignment_file, sep="\t")
+    df = pd.merge(local_df, global_df, on="AminoAcid", suffixes=("_Local", "_Global"))
+
+
+    plt.plot(df["AminoAcid"], df["Similarity_Local"], label="Local Alignment")
+    plt.plot(df["AminoAcid"], df["Similarity_Global"], label="Global Alignment")
+
+    plt.xlabel("Amino Acid")
+    plt.ylabel("Similarity")
+    plt.legend()
+    plt.savefig(out_png, dpi=300, bbox_inches='tight')
+
 if __name__ == "__main__":
     # run_gsva(
     #     count_matrix= "/home/luosg/Data/genomeStability/output/result/matrix/log2tpm229.tsv",
