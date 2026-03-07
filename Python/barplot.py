@@ -712,7 +712,7 @@ def plot_bar(
     out_png: str,
 ):
     plt.bar(df["AminoAcid"], df["Similarity_Local"], alpha=0.6, label="Local Alignment", color="blue")
-    plt.bar(df["AminoAcid"], df["Similarity_Global"], alpha=0.6, label="Global Alignment", color="orange")
+
 if __name__ == '__main__':
     # DEG_file = "/disk5/luosg/scRNAseq/output/result/DEG/Intestine/table/combined_groupCKO_chang_10XSC3_B_cell-combined_groupWT_chang_10XSC3_B_cell_DEG.tsv"
     # rmsk_file = "/ChIP_seq_2/Data/index/Mus_musculus/UCSC/mm39/rmsk_mm39.txt.gz"
