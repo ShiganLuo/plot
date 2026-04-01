@@ -566,7 +566,56 @@ def plot_comparison_broken_bar(
     ylabel="SV count",
     dpi=300,
 ):
+    """
+        Plot grouped bar charts with a broken y-axis to compare SV type counts across conditions.
 
+        This function visualizes structural variant (SV) counts for multiple groups using
+        side-by-side bar plots. A broken y-axis is applied to simultaneously display both
+        low and high count ranges. Statistical significance between groups for each SV type
+        is evaluated using a chi-square test and annotated as star labels.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Input DataFrame containing SV counts.
+        out_png : str
+            Output file path for the saved plot (PNG format).
+        group_col : str, default="group"
+            Column name indicating group labels (e.g., Control, Experiment).
+        svtype_col : str, default="svtype"
+            Column name indicating SV types.
+        count_col : str, default="count"
+            Column name containing count values.
+        group_order : tuple of str, default=("Control", "Experiment")
+            Order of groups for plotting and comparison.
+        svtype_order : tuple of str, default=("BND", "DEL", "DUP", "INS", "INV")
+            Order of SV types on the x-axis.
+        legend_map : dict, optional
+            Mapping from group names to legend labels. If None, uses group names directly.
+        figsize : tuple, default=(9, 5)
+            Figure size in inches.
+        ylabel : str, default="SV count"
+            Label for the y-axis.
+        dpi : int, default=300
+            Resolution of the output image.
+
+        Notes
+        -----
+        - Missing combinations of (SV type, group) are filled with zero.
+        - Significance is computed per SV type using chi-square contingency test.
+        - Significance levels:
+            * p < 1e-4 : "****"
+            * p < 1e-3 : "***"
+            * p < 1e-2 : "**"
+            * p < 0.05 : "*"
+            * otherwise: "ns"
+        - The broken y-axis improves visualization when count ranges are highly skewed.
+
+        Returns
+        -------
+        None
+            The plot is saved to `out_png`.
+    """
     if legend_map is None:
         legend_map = {g: g for g in group_order}
 
@@ -701,7 +750,7 @@ def plot_comparison_broken_bar(
         ax.spines["right"].set_visible(False)
 
     ax_top.legend(frameon=False)
-
+    plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     plt.savefig(out_png, dpi=dpi)
     plt.close()
