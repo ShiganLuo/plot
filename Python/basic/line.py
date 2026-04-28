@@ -192,6 +192,129 @@ def plot_biax_line(
     plt.tight_layout()
     plt.savefig(out_png, dpi=300)
     plt.close()
+def cor_plot(
+	infile: str,
+	cor_col: List[Tuple[str,str]],
+	outprefix:str,
+	font_size: float = 14.0
+):
+	"""Plot correlation scatter charts for one or multiple column pairs.
+
+	Correlation and trendline method
+	-------------------------------
+	For each ``(x_col, y_col)`` pair:
+	1. Both columns are converted to numeric with ``errors='coerce'``.
+	2. Rows with NaN in either column are removed (pairwise complete cases).
+	3. Pearson correlation coefficient is computed by
+	   ``plot_df[x_col].corr(plot_df[y_col])``.
+	4. A first-order linear trend line is fitted via least squares using
+	   ``numpy.polyfit(x, y, 1)`` and overlaid on the scatter plot.
+
+	Parameters
+	----------
+	infile : str
+		Input TSV/CSV file path.
+	cor_col : list[tuple[str, str]]
+		Column pairs to plot, e.g. [("x1", "y1"), ("x2", "y2")].
+	outprefix : str
+		Output file prefix; final image is "{outprefix}_cor_scatter.png".
+	font_size : float, default=14.0
+		Base font size for title, axes labels, ticks, and annotations.
+
+	Returns
+	-------
+	None
+		Save one combined PNG figure as ``{outprefix}_cor_scatter.png``.
+	"""
+	if not cor_col:
+		raise ValueError("cor_col is empty. Please provide at least one column pair.")
+	if font_size <= 0:
+		raise ValueError(f"font_size must be > 0, got {font_size}")
+
+	# Ensure Chinese labels/titles render correctly in this plotting entrypoint.
+	configure_chinese_font()
+
+	in_path = Path(infile)
+	if not in_path.exists():
+		raise FileNotFoundError(f"Input file not found: {in_path}")
+
+	sep = "\t" if in_path.suffix.lower() in {".tsv", ".txt"} else ","
+	df = pd.read_csv(in_path, sep=sep)
+
+	missing_cols = [
+		col_name
+		for x_col, y_col in cor_col
+		for col_name in (x_col, y_col)
+		if col_name not in df.columns
+	]
+	if missing_cols:
+		missing_unique = list(dict.fromkeys(missing_cols))
+		raise ValueError(f"Missing required columns: {missing_unique}")
+
+	n_plots = len(cor_col)
+	ncols = 2 if n_plots > 1 else 1
+	nrows = int(np.ceil(n_plots / ncols))
+	fig, axes = plt.subplots(
+		nrows=nrows,
+		ncols=ncols,
+		figsize=(9 * ncols, 7 * nrows),
+		squeeze=False,
+	)
+	flat_axes = axes.flatten()
+
+	for idx, (x_col, y_col) in enumerate(cor_col):
+		ax = flat_axes[idx]
+		plot_df = df[[x_col, y_col]].copy()
+		plot_df[x_col] = pd.to_numeric(plot_df[x_col], errors="coerce")
+		plot_df[y_col] = pd.to_numeric(plot_df[y_col], errors="coerce")
+		plot_df = plot_df.dropna(subset=[x_col, y_col])
+
+		if plot_df.empty:
+			ax.text(0.5, 0.5, "No numeric data", ha="center", va="center", fontsize=font_size)
+			ax.set_title(f"{x_col} vs {y_col}", fontsize=font_size + 2)
+			ax.set_xlabel(x_col, fontsize=font_size)
+			ax.set_ylabel(y_col, fontsize=font_size)
+			ax.tick_params(axis="both", labelsize=max(font_size - 1, 8))
+			continue
+
+		x_vals = plot_df[x_col].to_numpy(dtype=float)
+		y_vals = plot_df[y_col].to_numpy(dtype=float)
+
+		ax.scatter(x_vals, y_vals, alpha=0.7, s=24, edgecolors="none")
+		ax.set_title(f"{x_col} vs {y_col}", fontsize=font_size + 2)
+		ax.set_xlabel(x_col, fontsize=font_size)
+		ax.set_ylabel(y_col, fontsize=font_size)
+		ax.tick_params(axis="both", labelsize=max(font_size - 1, 8))
+		ax.grid(alpha=0.25, linestyle="--")
+
+		# Add a linear trend line when x has variability.
+		if len(plot_df) >= 2 and np.unique(x_vals).size >= 2:
+			slope, intercept = np.polyfit(x_vals, y_vals, 1)
+			x_line = np.linspace(np.min(x_vals), np.max(x_vals), 100)
+			y_line = slope * x_line + intercept
+			ax.plot(x_line, y_line, color="#D62728", linewidth=1.6, linestyle="-")
+
+		if len(plot_df) >= 2:
+			corr = plot_df[x_col].corr(plot_df[y_col])
+			ax.text(
+				0.03,
+				0.97,
+				f"r = {corr:.3f}",
+				transform=ax.transAxes,
+				va="top",
+				ha="left",
+				fontsize=max(font_size - 1, 8),
+				bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.75},
+			)
+
+	for idx in range(n_plots, len(flat_axes)):
+		flat_axes[idx].axis("off")
+
+	fig.tight_layout()
+	out_path = f"{outprefix}_cor_scatter.png"
+	fig.savefig(out_path, dpi=300)
+	plt.close(fig)
+	print(f"Saved correlation plot: {out_path}")
 
 if __name__ == "__main__":
     # run_gsva(
