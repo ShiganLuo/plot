@@ -7,6 +7,39 @@ from scipy.stats import mannwhitneyu
 import itertools
 import numpy as np
 
+def violin_plot(
+    df: pd.DataFrame,
+    key: str,
+    value: str,
+    outfile:str,
+    xlabel: str = "SV Type",
+    ylabel: str = "Delta Frequency (Freq - ddPCR_AF)",
+):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.violinplot(
+        x=key,
+        y=value,
+        data=df,
+        inner='box',
+        linewidth=1.5,
+        hue=key,
+        palette='Set2',
+        ax=ax
+    )
+    sns.stripplot(
+        x=key,
+        y=value,
+        data=df,
+        color='black',
+        size=3,
+        alpha=0.5,
+        ax=ax
+    )
+    ax.set_xlabel(xlabel, fontsize=12)
+    ax.set_ylabel(ylabel, fontsize=12)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+    fig.savefig(outfile, dpi=300, bbox_inches='tight')
+
 def violin(
         df:pd.DataFrame,
         outplot:str,
