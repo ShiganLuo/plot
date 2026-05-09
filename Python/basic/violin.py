@@ -37,7 +37,7 @@ def violin_plot(
     )
     ax.set_xlabel(xlabel, fontsize=12)
     ax.set_ylabel(ylabel, fontsize=12)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+    ax.tick_params(axis='x', labelrotation=45)
     fig.savefig(outfile, dpi=300, bbox_inches='tight')
 
 def violin(
