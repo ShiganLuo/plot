@@ -119,3 +119,84 @@ ax8.set_ylabel("LR")
 ax8.set_title("Splendens")
 fig8.savefig(outfile_ss, bbox_inches='tight')
 plt.close(fig8)
+
+def transport_plot(
+    df,
+    output_path: str,
+    gene_type_col: str = "gene_type",
+    ratio_col: str = "ratio_kd_wt",
+    state_col: str = "export_state",
+):
+    """
+    Plot gene transport ratio distribution stratified by gene type and export state.
+
+    Features:
+    - Removes NA values
+    - Log-scaled ratio axis
+    - Gene type stratification on Y axis with jitter
+    - Export state coloring
+    - Legend in upper-right corner
+    - Displays percentage of each state within each gene type
+    """
+    df = df.dropna(subset=[gene_type_col, ratio_col, state_col])
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    gene_types = df[gene_type_col].unique()
+    states = df[state_col].unique()
+
+    cmap = dict(zip(states, plt.cm.Set2.colors[:len(states)]))
+
+    legend_handles = []
+    legend_labels = []
+
+    for i, gene_type in enumerate(gene_types):
+        group = df[df[gene_type_col] == gene_type]
+        total = len(group)
+
+        for state in states:
+            sub = group[group[state_col] == state]
+            if len(sub) == 0:
+                continue
+
+            y = np.random.normal(i, 0.08, len(sub))
+
+            ax.scatter(
+                sub[ratio_col].to_numpy(),
+                y,
+                color=cmap[state],
+                alpha=0.6,
+                s=12
+            )
+
+    for state in states:
+        pct = (df[df[state_col] == state].shape[0] / len(df)) * 100
+        legend_handles.append(
+            plt.Line2D([0], [0], marker='o', color='w',
+                        markerfacecolor=cmap[state], markersize=6)
+        )
+        legend_labels.append(f"{state} ({pct:.1f}%)")
+
+    ax.set_yticks(np.arange(len(gene_types)))
+    ax.set_yticklabels(gene_types)
+
+    ax.set_xscale("log")
+
+    ax.set_xlabel("Normalized nuclear/cytoplasmic ratio (KD / WT)")
+    ax.set_ylabel("")
+
+    ax.legend(
+        legend_handles,
+        legend_labels,
+        title="Export state",
+        loc="center right",
+        frameon=False,
+        handletextpad=0.4,
+        borderpad=0.2
+    )
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
