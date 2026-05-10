@@ -120,7 +120,6 @@ ax8.set_title("Splendens")
 fig8.savefig(outfile_ss, bbox_inches='tight')
 plt.close(fig8)
 
-def transport_plot(
     df,
     output_path: str,
     gene_type_col: str = "gene_type",
@@ -128,17 +127,16 @@ def transport_plot(
     state_col: str = "export_state",
 ):
     """
-    Plot gene transport ratio distribution stratified by gene type and export state.
+    Plot transport ratio by gene type with export state coloring.
 
-    Features:
-    - Removes NA values
+    - Legend shows ONLY export states
+    - State proportions are annotated next to corresponding scatter clusters
+    - NA values removed
     - Log-scaled ratio axis
-    - Gene type stratification on Y axis with jitter
-    - Export state coloring
-    - Legend in upper-right corner
-    - Displays percentage of each state within each gene type
     """
+
     df = df.dropna(subset=[gene_type_col, ratio_col, state_col])
+    df = df[df[ratio_col] > 0]
 
     fig, ax = plt.subplots(figsize=(7, 5))
 
@@ -146,9 +144,6 @@ def transport_plot(
     states = df[state_col].unique()
 
     cmap = dict(zip(states, plt.cm.Set2.colors[:len(states)]))
-
-    legend_handles = []
-    legend_labels = []
 
     for i, gene_type in enumerate(gene_types):
         group = df[df[gene_type_col] == gene_type]
@@ -159,40 +154,55 @@ def transport_plot(
             if len(sub) == 0:
                 continue
 
-            y = np.random.normal(i, 0.08, len(sub))
+            x = sub[ratio_col].to_numpy()
+            x = x[np.isfinite(x) & (x > 0)]
+            if len(x) == 0:
+                continue
+
+            y = np.random.normal(i, 0.08, len(x))
 
             ax.scatter(
-                sub[ratio_col].to_numpy(),
+                x,
                 y,
                 color=cmap[state],
                 alpha=0.6,
-                s=12
+                s=12,
+                zorder=2
             )
 
-    for state in states:
-        pct = (df[df[state_col] == state].shape[0] / len(df)) * 100
-        legend_handles.append(
-            plt.Line2D([0], [0], marker='o', color='w',
-                        markerfacecolor=cmap[state], markersize=6)
-        )
-        legend_labels.append(f"{state} ({pct:.1f}%)")
+            pct = len(sub) / total * 100 if total > 0 else 0
+            x_pos = np.median(x)
+
+            ax.text(
+                x_pos,
+                i + 0.40,
+                f"{pct:.1f}%",
+                color=cmap[state],
+                ha="left",
+                va="center",
+                fontsize=8,
+                zorder=10
+            )
 
     ax.set_yticks(np.arange(len(gene_types)))
     ax.set_yticklabels(gene_types)
 
     ax.set_xscale("log")
-
     ax.set_xlabel("Normalized nuclear/cytoplasmic ratio (KD / WT)")
     ax.set_ylabel("")
 
+    handles = [
+        plt.Line2D([0], [0], marker='o', color='w',
+                   markerfacecolor=cmap[s], markersize=6)
+        for s in states
+    ]
+
     ax.legend(
-        legend_handles,
-        legend_labels,
+        handles,
+        states,
         title="Export state",
-        loc="center right",
-        frameon=False,
-        handletextpad=0.4,
-        borderpad=0.2
+        loc="center left",
+        frameon=False
     )
 
     ax.spines["top"].set_visible(False)
