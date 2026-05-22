@@ -7,6 +7,206 @@ from scipy.stats import mannwhitneyu
 import itertools
 import numpy as np
 
+def paired_violin_plot(
+    df: pd.DataFrame,
+    key: str,
+    values: List[str],
+    outfile: str,
+    xlabel: str = "Group",
+    ylabel: str = "Value",
+    group_names: Optional[List[str]] = None,
+    palette: Tuple[str, str] = ("#2166AC", "#B2182B"),
+    figsize: tuple = (7, 8),
+    violin_alpha: float = 0.25,
+    violin_width: float = 0.7,
+    point_size: float = 28,
+    line_alpha: float = 0.35,
+    line_width: float = 0.8,
+    jitter: float = 0.04,
+):
+    if key not in df.columns:
+        raise ValueError(
+            f"sample id column not found: {key}"
+        )
+
+    if len(values) != 2:
+        raise ValueError(
+            "`values` must contain exactly two columns"
+        )
+
+    missing_cols = [
+        v for v in values
+        if v not in df.columns
+    ]
+
+    if missing_cols:
+        raise ValueError(
+            f"columns not found: {missing_cols}"
+        )
+    if group_names is None:
+        group_names = values
+
+    if len(group_names) != 2:
+        raise ValueError(
+            "`group_names` must contain two names"
+        )
+    df_plot = (
+        df[[key] + values]
+        .dropna(subset=values)
+        .copy()
+    )
+    long_parts = []
+
+    for value_col, group_name in zip(
+        values,
+        group_names,
+    ):
+
+        sub_df = pd.DataFrame(
+            {
+                "sample_id": df_plot[key],
+                "group": group_name,
+                "value": df_plot[value_col],
+            }
+        )
+
+        long_parts.append(sub_df)
+
+    long_df = pd.concat(
+        long_parts,
+        ignore_index=True,
+    )
+    plt.rcParams["pdf.fonttype"] = 42
+    plt.rcParams["ps.fonttype"] = 42
+
+    sns.set_style("whitegrid")
+
+    fig, ax = plt.subplots(
+        figsize=figsize
+    )
+    violin = sns.violinplot(
+        data=long_df,
+        x="group",
+        y="value",
+        order=group_names,
+        palette=list(palette),
+        cut=1,
+        inner=None,
+        linewidth=1.5,
+        width=violin_width,
+        bw_adjust=1.2,
+        density_norm="area",
+        ax=ax,
+    )
+    for poly in violin.collections:
+
+        try:
+            poly.set_alpha(violin_alpha)
+            poly.set_edgecolor("black")
+            poly.set_linewidth(1.2)
+        except Exception:
+            pass
+    x_positions = {
+            group_names[0]: 0,
+            group_names[1]: 1,
+        }
+    rng = np.random.default_rng(123)
+
+    for _, row in df_plot.iterrows():
+
+
+        x1 = (
+            x_positions[group_names[0]]
+            + rng.uniform(-jitter, jitter)
+        )
+
+        x2 = (
+            x_positions[group_names[1]]
+            + rng.uniform(-jitter, jitter)
+        )
+
+        y1 = row[values[0]]
+        y2 = row[values[1]]
+
+        # paired line
+        ax.plot(
+            [x1, x2],
+            [y1, y2],
+            color="gray",
+            linewidth=line_width,
+            alpha=line_alpha,
+            zorder=1,
+        )
+
+        # left point
+        ax.scatter(
+            x1,
+            y1,
+            s=point_size,
+            color="black",
+            alpha=0.9,
+            zorder=3,
+        )
+
+        # right point
+        ax.scatter(
+            x2,
+            y2,
+            s=point_size,
+            color="black",
+            alpha=0.9,
+            zorder=3,
+        )
+    medians = [
+        np.median(df_plot[v])
+        for v in values
+    ]
+
+    for i, median in enumerate(medians):
+
+        ax.hlines(
+            y=median,
+            xmin=i - 0.18,
+            xmax=i + 0.18,
+            color="black",
+            linewidth=2.5,
+            zorder=5,
+        )
+    ax.set_xlabel(
+        xlabel,
+        fontsize=14,
+    )
+
+    ax.set_ylabel(
+        ylabel,
+        fontsize=14,
+    )
+    ax.tick_params(
+        axis="x",
+        labelsize=12,
+    )
+
+    ax.tick_params(
+        axis="y",
+        labelsize=11,
+    )
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    ax.grid(
+        axis="y",
+        linestyle="--",
+        alpha=0.25,
+    )
+    fig.tight_layout()
+    fig.savefig(
+        outfile,
+        dpi=600,
+        bbox_inches="tight",
+    )
+
+    plt.close(fig)
+
 def adjust_group_color(
     color,
     group_idx,
