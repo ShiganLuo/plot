@@ -7,6 +7,473 @@ from scipy.stats import mannwhitneyu
 import itertools
 import numpy as np
 
+def adjust_group_color(
+    color,
+    group_idx,
+    n_groups,
+    lightness_strength: float = 0.25,
+    saturation_strength: float = 0.35,
+    max_lightness: float = 0.75,
+):
+    """
+    Adjust group color while keeping
+    mutation hue stable.
+
+    Parameters
+    ----------
+    color :
+        Base RGB tuple.
+
+    group_idx :
+        Group index.
+
+    n_groups :
+        Total group count.
+
+    lightness_strength :
+        How much brighter later groups become.
+
+        Larger value:
+            stronger lightness contrast.
+
+    saturation_strength :
+        How much saturation decreases.
+
+        Larger value:
+            stronger pale effect.
+
+    max_lightness :
+        Upper limit of brightness.
+
+        Prevents colors becoming nearly white.
+    """
+
+    r, g, b = color
+
+    h, l, s = colorsys.rgb_to_hls(
+        r,
+        g,
+        b,
+    )
+
+    if n_groups == 1:
+        return color
+
+    ratio = group_idx / (n_groups - 1)
+
+    # increase lightness
+    l = min(
+        max_lightness,
+        l + ratio * lightness_strength,
+    )
+
+    # reduce saturation
+    s = max(
+        0.05,
+        s - ratio * saturation_strength,
+    )
+
+    return colorsys.hls_to_rgb(
+        h,
+        l,
+        s,
+    )
+
+
+def violin_plot_advanced(
+    df: pd.DataFrame,
+    key: str,
+    values: List[str],
+    outfile: str,
+    xlabel: str = "SV Type",
+    ylabel: str = "Delta Frequency",
+    order: Optional[List[str]] = None,
+    sort_keys: bool = True,
+    group_names: Optional[List[str]] = None,
+    group_order: Optional[List[str]] = None,
+    base_palette: str = "Set2",
+    figsize: tuple = (16, 8),
+):
+    """
+    Draw violin + strip plot.
+
+    Features
+    --------
+    - Different mutations:
+        different base colors
+
+    - Different groups:
+        different saturation/lightness
+        within same mutation
+
+    - Black solid strip points
+
+    - Publication-style aesthetics
+    """
+
+    # ==========================================================
+    # matplotlib settings
+    # ==========================================================
+
+    plt.rcParams["pdf.fonttype"] = 42
+    plt.rcParams["ps.fonttype"] = 42
+
+    sns.set_style("whitegrid")
+
+    # ==========================================================
+    # validation
+    # ==========================================================
+
+    if key not in df.columns:
+        raise ValueError(
+            f"x-axis column not found: {key}"
+        )
+
+    if not values:
+        raise ValueError(
+            "`values` cannot be empty"
+        )
+
+    missing_cols = [
+        v for v in values
+        if v not in df.columns
+    ]
+
+    if missing_cols:
+        raise ValueError(
+            f"y-axis columns not found: {missing_cols}"
+        )
+
+    if (
+        group_names is not None
+        and len(group_names) != len(values)
+    ):
+        raise ValueError(
+            "`group_names` length must equal "
+            "`values` length"
+        )
+
+    # ==========================================================
+    # build long dataframe
+    # ==========================================================
+
+    long_parts = []
+
+    for i, v_col in enumerate(values):
+
+        group_name = (
+            group_names[i]
+            if group_names is not None
+            else v_col
+        )
+
+        sub_df = (
+            df[[key, v_col]]
+            .dropna(subset=[key, v_col])
+            .copy()
+        )
+
+        sub_df = sub_df.rename(
+            columns={v_col: "_y"}
+        )
+
+        sub_df["group"] = group_name
+
+        long_parts.append(sub_df)
+
+    if not long_parts:
+        raise ValueError(
+            "No valid plotting data"
+        )
+
+    df_plot = pd.concat(
+        long_parts,
+        ignore_index=True,
+    )
+
+    # ==========================================================
+    # x-axis order
+    # ==========================================================
+
+    if order is None:
+
+        observed_order = (
+            df_plot[key]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+        if sort_keys:
+            order = sorted(observed_order)
+        else:
+            order = observed_order
+
+    # ==========================================================
+    # group order
+    # ==========================================================
+
+    if group_order is None:
+
+        group_order = (
+            df_plot["group"]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+    # ==========================================================
+    # base colors
+    # ==========================================================
+
+    base_colors = sns.color_palette(
+        base_palette,
+        n_colors=len(order),
+    )
+
+    mutation_color_map = {
+        mutation: color
+        for mutation, color in zip(
+            order,
+            base_colors,
+        )
+    }
+
+    # ==========================================================
+    # color adjustment
+    # ==========================================================
+
+    
+
+    # ==========================================================
+    # plotting
+    # ==========================================================
+
+    fig, ax = plt.subplots(
+        figsize=figsize
+    )
+
+    # ----------------------------------------------------------
+    # violin plot
+    # ----------------------------------------------------------
+
+    sns.violinplot(
+        data=df_plot,
+        x=key,
+        y="_y",
+        hue="group",
+        order=order,
+        hue_order=group_order,
+        dodge=True,
+        inner="quartile",
+        linewidth=1.2,
+        saturation=1,
+        bw_adjust=1.2,
+        density_norm="area",
+        width=0.95,
+        ax=ax,
+    )
+
+    # ==========================================================
+    # recolor violins
+    # ==========================================================
+
+    violin_bodies = [
+        c for c in ax.collections
+        if isinstance(
+            c,
+            mcollections.PolyCollection
+        )
+    ]
+
+    violin_idx = 0
+
+    for mutation in order:
+
+        base_color = mutation_color_map[
+            mutation
+        ]
+
+        for group_idx, group in enumerate(
+            group_order
+        ):
+
+            if violin_idx >= len(
+                violin_bodies
+            ):
+                break
+
+            color = adjust_group_color(
+                base_color,
+                group_idx,
+                len(group_order),
+            )
+
+            violin = violin_bodies[
+                violin_idx
+            ]
+
+            violin.set_facecolor(color)
+
+            violin.set_edgecolor(
+                "black"
+            )
+
+            violin.set_alpha(0.95)
+
+            violin.set_linewidth(1)
+
+            violin_idx += 1
+
+    # ==========================================================
+    # black solid strip points
+    # ==========================================================
+
+    sns.stripplot(
+        data=df_plot,
+        x=key,
+        y="_y",
+        hue="group",
+        order=order,
+        hue_order=group_order,
+        dodge=True,
+        jitter=0.12,
+        color="black",
+        size=2.5,
+        alpha=0.9,
+        linewidth=0,
+        ax=ax,
+    )
+
+    # ==========================================================
+    # remove duplicated legends
+    # ==========================================================
+
+    if ax.get_legend() is not None:
+        ax.get_legend().remove()
+
+    # ==========================================================
+    # explanatory legend
+    # ==========================================================
+
+    example_mutation = order[0]
+
+    example_base_color = mutation_color_map[
+        example_mutation
+    ]
+
+    legend_handles = []
+
+    n_groups = len(group_order)
+
+    if n_groups == 2:
+
+        shade_words = [
+            "Dark",
+            "Light",
+        ]
+
+    else:
+
+        shade_words = [
+            f"Shade {i + 1}"
+            for i in range(n_groups)
+        ]
+
+    for group_idx, group in enumerate(
+        group_order
+    ):
+
+        legend_color = adjust_group_color(
+            example_base_color,
+            group_idx,
+            n_groups,
+        )
+
+        label = (
+            f"{shade_words[group_idx]} "
+            f"{group}"
+        )
+
+        legend_handles.append(
+            mpatches.Patch(
+                facecolor=legend_color,
+                edgecolor="black",
+                label=label,
+            )
+        )
+
+    ax.legend(
+        handles=legend_handles,
+        title="Color meaning",
+        bbox_to_anchor=(1.02, 1),
+        loc="upper left",
+        frameon=False,
+        fontsize=11,
+        title_fontsize=12,
+    )
+
+    # ==========================================================
+    # labels
+    # ==========================================================
+
+    ax.set_xlabel(
+        xlabel,
+        fontsize=14,
+    )
+
+    ax.set_ylabel(
+        ylabel,
+        fontsize=14,
+    )
+
+    # ==========================================================
+    # ticks
+    # ==========================================================
+
+    ax.tick_params(
+        axis="x",
+        rotation=45,
+        labelsize=11,
+    )
+
+    ax.tick_params(
+        axis="y",
+        labelsize=11,
+    )
+
+    # ==========================================================
+    # style
+    # ==========================================================
+
+    ax.spines["top"].set_visible(False)
+
+    ax.spines["right"].set_visible(False)
+
+    ax.grid(
+        axis="y",
+        linestyle="--",
+        alpha=0.3,
+    )
+
+    # ==========================================================
+    # layout
+    # ==========================================================
+
+    fig.tight_layout()
+
+    # ==========================================================
+    # save
+    # ==========================================================
+
+    fig.savefig(
+        outfile,
+        dpi=600,
+        bbox_inches="tight",
+    )
+
+    plt.close(fig)
+
 def violin_plot(
     df: pd.DataFrame,
     key: str,
