@@ -707,7 +707,7 @@ def violin_plot(
     ax.tick_params(axis='x', labelrotation=45)
     fig.savefig(outfile, dpi=300, bbox_inches='tight')
 
-def violin(
+def violin_test_df(
         df:pd.DataFrame,
         outplot:str,
         key:str,
