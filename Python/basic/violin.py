@@ -757,6 +757,192 @@ def violin_test_df(
     plt.savefig(outplot,dpi=300)
 
 
+def plot_comparison_with_violin(
+    result: Dict[str, Any],
+    scatter_size: int = 10,
+    jitter_width:float = 0.3,
+    title: str = "Mapping Rate Comparison",
+    xlabel: str = "Sample Type",
+    ylabel: str = "Mapping Rate (%)",
+    figsize: Tuple[int, int] = (10, 7),
+    palette: Tuple[str, str] = ("#3498db", "#e74c3c"),
+    show_stats: bool = True,
+    save_path: Optional[str] = None,
+    dpi: int = 300,
+    verbose: bool = True
+) -> Figure:
+    """
+    Create a violin plot with embedded box plot for comparing two groups.
+
+    Parameters
+    ----------
+    result : dict
+        Result dictionary from prepare_data().
+    title : str, optional
+        Plot title.
+    xlabel : str, optional
+        X-axis label.
+    ylabel : str, optional
+        Y-axis label.
+    figsize : tuple of int, optional
+        Figure size.
+    palette : tuple of str, optional
+        Colors for the two groups.
+    show_stats : bool, optional
+        Whether to show statistics annotation.
+    save_path : str, optional
+        Path to save the figure.
+    dpi : int, optional
+        DPI for saved figure.
+    verbose : bool, optional
+        Whether to logger.info information.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The created figure object.
+    """
+    # Configure Chinese font
+    selected_font = configure_chinese_font()
+    if verbose and selected_font:
+        logger.info(f"Using Chinese font: {selected_font}")
+
+    # Extract data
+    group1_name = result['group1_name']
+    group2_name = result['group2_name']
+    group1_data = result['group1_data']
+    group2_data = result['group2_data']
+    comparison = result['comparison']
+
+    # Set style
+    sns.set_style("whitegrid")
+    apply_font_after_style(selected_font)
+    plt.rcParams['font.size'] = 12
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Prepare data for seaborn
+    df_plot = pd.DataFrame({
+        'value': group1_data + group2_data,
+        'group': [group1_name] * len(group1_data) + [group2_name] * len(group2_data)
+    })
+
+    # Create violin plot using seaborn (better KDE control)
+    sns.violinplot(
+        data=df_plot,
+        x='group',
+        y='value',
+        palette=palette,
+        bw_adjust=0.8,   # Adjust bandwidth for smoother KDE
+        inner='box',     # Show box plot inside violin
+        alpha=0.7,
+        linewidth=1.5,
+        ax=ax
+    )
+
+    # Add individual points with jitter
+    for i, (data, pos, color) in enumerate(zip([group1_data, group2_data], [0, 1], palette)):
+        jitter = np.random.uniform(-jitter_width, jitter_width, size=len(data))
+        ax.scatter(
+            np.full_like(data, pos) + jitter,
+            data,
+            color=color,
+            alpha=0.6,
+            s=scatter_size,
+            edgecolors='black',
+            linewidths=0.5,
+            zorder=5
+        )
+
+    # Set labels with explicit font properties
+    from matplotlib.font_manager import FontProperties
+    if selected_font:
+        font_prop = FontProperties(family=selected_font, size=12)
+        font_prop_bold = FontProperties(family=selected_font, size=14, weight='bold')
+        font_prop_title = FontProperties(family=selected_font, size=16, weight='bold')
+    else:
+        font_prop = FontProperties(size=12)
+        font_prop_bold = FontProperties(size=14, weight='bold')
+        font_prop_title = FontProperties(size=16, weight='bold')
+
+    # Seaborn uses 0-based positions
+    ax.set_xticklabels([f"{group1_name}\n(n={len(group1_data)})", f"{group2_name}\n(n={len(group2_data)})"],
+                       fontproperties=font_prop)
+    ax.set_xlabel(xlabel, fontproperties=font_prop_bold)
+    ax.set_ylabel(ylabel, fontproperties=font_prop_bold)
+    ax.set_title(title, fontproperties=font_prop_title, pad=20)
+
+    # Add statistics if requested
+    if show_stats:
+        p_value = comparison['p_value']
+        significant = comparison['significant']
+        effect_size = comparison['effect_size']
+        effect_interp = comparison['effect_size_interpretation']
+
+        if p_value < 0.001:
+            sig_stars = "***"
+        elif p_value < 0.01:
+            sig_stars = "**"
+        elif p_value < 0.05:
+            sig_stars = "*"
+        else:
+            sig_stars = "ns"
+
+        y_max = max(max(group1_data), max(group2_data))
+        y_min = min(min(group1_data), min(group2_data))
+        y_range = y_max - y_min
+
+        bracket_y = y_max + y_range * 0.15
+        star_y = bracket_y + y_range * 0.05
+
+        # Use 0-based positions for seaborn
+        ax.plot([0, 0, 1, 1], [bracket_y, bracket_y + y_range * 0.02, bracket_y + y_range * 0.02, bracket_y],
+                color='black', linewidth=1.5)
+
+        ax.text(0.5, star_y, sig_stars, ha='center', va='bottom', fontsize=16, fontweight='bold')
+
+        p_text = f"p = {p_value:.4f}" if p_value >= 0.001 else f"p < 0.001"
+        ax.text(0.5, star_y - y_range * 0.08, p_text, ha='center', va='top', fontsize=11, style='italic')
+
+        # Add effect size info - use axes transform for better positioning
+        effect_text = f"{comparison['effect_size_name']}: {effect_size:.2f} ({effect_interp})"
+        ax.text(0.98, 0.98, effect_text, transform=ax.transAxes, fontsize=10, 
+                color='gray', ha='right', va='top', style='italic')
+
+        # Add test name - use axes transform for better positioning
+        test_text = f"Test: {comparison['test_name']}"
+        ax.text(0.02, 0.02, test_text, transform=ax.transAxes, fontsize=9, color='gray', style='italic')
+
+        # Remove ylim restriction to avoid truncating violin plot
+        # ax.set_ylim(y_min - y_range * 0.1, y_max + y_range * 0.35)
+
+    # Add mean annotations with explicit font properties
+    from matplotlib.font_manager import FontProperties
+    if selected_font:
+        font_prop = FontProperties(family=selected_font)
+    else:
+        font_prop = FontProperties()
+
+    for i, (data, pos, name) in enumerate(zip([group1_data, group2_data], [0, 1], [group1_name, group2_name])):
+        mean_val = np.mean(data)
+        ax.text(pos, mean_val, f"  μ={mean_val:.1f}%", va='center', fontsize=10, fontweight='bold', fontproperties=font_prop)
+
+    # Clean up
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.yaxis.grid(True, linestyle='--', alpha=0.7)
+    ax.set_axisbelow(True)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=dpi, bbox_inches='tight', facecolor='white')
+        if verbose:
+            logger.info(f"Figure saved to: {save_path}")
+
+    return fig
+
 
 
 def violin_by_method_celltype_step(df_dict: dict, outplot: str):
