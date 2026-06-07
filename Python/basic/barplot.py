@@ -8,6 +8,266 @@ from pathlib import Path
 from typing import List, Union, Dict
 from scipy.stats import chi2_contingency
 
+def plot_group_type_comparison(
+    df: pd.DataFrame,
+    out_png: str,
+    group_col: str = "group",
+    type_col: str = "svtype",
+    count_col: str = "count",
+    group_order: tuple = ("Control", "Experiment"),
+    type_order: tuple = ("BND", "DEL", "DUP", "INS", "INV"),
+    legend_map: Optional[Dict[str, str]] = None,
+    figsize: tuple = (9, 6),
+    ylabel: str = "SV count",
+    dpi: int = 300,
+    use_broken_axis: bool = True,
+    do_test: bool = True,
+    test_method: str = "chi2",
+    colors: Optional[Dict[str, str]] = None,
+    bracket_gap: float = 20.0,
+    tick_depth: float = 6.0,
+    bracket_lw: float = 0.8,
+) -> None:
+    """
+    Plot a grouped bar chart comparing SV type counts across multiple groups.
+
+    Performs chi-squared tests per SV type across all groups and optionally
+    annotates pairwise significance on a broken y-axis.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Long-format DataFrame with group, SV type, and count columns.
+    out_png : str
+        Output file path for the saved image.
+    group_col : str, optional
+        Column identifying sample groups. Default is ``"group"``.
+    type_col : str, optional
+        Column identifying SV types. Default is ``"svtype"``.
+    count_col : str, optional
+        Column with counts. Default is ``"count"``.
+    group_order : tuple of str, optional
+        Ordered group names to display. Any number of groups supported.
+    type_order : tuple of str, optional
+        Ordered SV types to display.
+    legend_map : dict, optional
+        Mapping from group name to legend label. Defaults to identity.
+    figsize : tuple, optional
+        Figure size ``(width, height)``. Default is ``(9, 5)``.
+    ylabel : str, optional
+        Y-axis label. Default is ``"SV count"``.
+    dpi : int, optional
+        Resolution in dots per inch. Default is ``300``.
+    use_broken_axis : bool, optional
+        If ``True``, use a split y-axis to accommodate large count
+        differences. Default is ``True``.
+    do_test : bool, optional
+        If ``True``, perform chi-squared tests and annotate significance.
+        Default is ``True``.
+    test_method : str, optional
+        Statistical test method: ``"chi2"`` or ``"fisher"``.
+        Default is ``"chi2"``.
+    colors : dict, optional
+        Mapping from group name to color. Auto-generated from ``tab10``
+        if ``None``.
+    bracket_gap : float, optional
+        Vertical gap in display points between stacked bracket units
+        within the same SV type. Default is ``10.0``.
+    tick_depth : float, optional
+        Depth of the outward diagonal ticks in display points. Larger
+        values produce steeper ticks. Default is ``6.0``.
+    bracket_lw : float, optional
+        Line width for bracket lines and ticks. Default is ``0.8``.
+
+    Returns
+    -------
+    None
+        Saves the figure to *out_png* at the specified DPI.
+    """
+    outdir = os.path.dirname(out_png)
+    os.makedirs(outdir, exist_ok=True)
+
+    n_groups = len(group_order)
+
+    if legend_map is None:
+        legend_map = {g: g for g in group_order}
+
+    pivot = (
+        df.pivot(index=type_col, columns=group_col, values=count_col)
+        .reindex(type_order)
+        .fillna(0)
+    )
+
+    def p_to_star(p: float) -> str:
+        if p < 1e-4:
+            return "****"
+        elif p < 1e-3:
+            return "***"
+        elif p < 1e-2:
+            return "**"
+        elif p < 0.05:
+            return "*"
+        else:
+            return "ns"
+
+    # ---------- significance: pairwise chi2 ----------
+    all_pairs: Dict[str, List[tuple]] = {}
+    if do_test:
+        for sv in pivot.index:
+            pairs = []
+            for i, g1 in enumerate(group_order):
+                for g2 in group_order[i + 1:]:
+                    idx1 = list(group_order).index(g1)
+                    idx2 = list(group_order).index(g2)
+                    table = np.array([
+                        [pivot.loc[sv, g1], pivot[g1].sum() - pivot.loc[sv, g1]],
+                        [pivot.loc[sv, g2], pivot[g2].sum() - pivot.loc[sv, g2]],
+                    ])
+                    # Skip degenerate tables
+                    if table.min() < 0 or table.sum() == 0 or (table.sum(axis=0) == 0).any() or (table.sum(axis=1) == 0).any():
+                        continue
+                    try:
+                        if test_method == "fisher":
+                            _, p = fisher_exact(table)
+                        else:
+                            _, p, _, _ = chi2_contingency(table)
+                    except ValueError:
+                        continue
+                    pairs.append((idx1, idx2, p_to_star(p)))
+            all_pairs[sv] = pairs
+
+    # ---------- colors ----------
+    if colors is None:
+        cmap = plt.cm.tab10
+        colors = {g: cmap(i / max(n_groups - 1, 1)) for i, g in enumerate(group_order)}
+
+    # ---------- axis setup ----------
+    x = np.arange(len(pivot.index))
+    total_width = 0.8
+    bar_width = total_width / n_groups
+    offsets = [bar_width * (i - (n_groups - 1) / 2) for i in range(n_groups)]
+
+    # Auto-detect whether broken axis is needed
+    global_max = pivot.values.max()
+    sig_sv_list = [sv for sv, pairs in all_pairs.items()
+                   if any(s != "ns" for _, _, s in pairs)]
+    if sig_sv_list:
+        sig_max = pivot.loc[sig_sv_list].values.max()
+    else:
+        sig_max = np.median(pivot.values)
+
+    # If the max bar is not significantly taller than the rest, skip broken axis
+    need_broken = use_broken_axis and (global_max > sig_max * 2.0)
+
+    if need_broken:
+        low_max = sig_max * 1.15
+        high_min = low_max * 1.1
+        high_max = global_max * 1.15
+
+        fig, (ax_top, ax_bottom) = plt.subplots(
+            2, 1, sharex=True,
+            figsize=figsize,
+            gridspec_kw={"height_ratios": [1, 3]},
+        )
+
+        axes = (ax_top, ax_bottom)
+
+        for ax in axes:
+            for i, g in enumerate(group_order):
+                ax.bar(x + offsets[i], pivot[g], bar_width,
+                       color=colors[g], label=legend_map[g])
+
+        ax_bottom.set_ylim(0, low_max)
+        ax_top.set_ylim(high_min, high_max)
+
+        # broken marks
+        d = 0.008
+        ax_top.plot((-d, +d), (-d, +d), transform=ax_top.transAxes,
+                     color="black", clip_on=False)
+        ax_bottom.plot((-d, +d), (1 - d, 1 + d), transform=ax_bottom.transAxes,
+                        color="black", clip_on=False)
+    else:
+        fig, ax = plt.subplots(figsize=figsize)
+        for i, g in enumerate(group_order):
+            ax.bar(x + offsets[i], pivot[g], bar_width,
+                   color=colors[g], label=legend_map[g])
+
+        axes = (ax,)
+        ax_top = ax_bottom = ax
+
+    # ---------- significance brackets (宝盖头 style) ----------
+    if do_test:
+        LEG_PT = 8
+        TEXT_PT = 3
+
+        fig.canvas.draw()
+
+        for i_sv, sv in enumerate(pivot.index):
+            pairs = all_pairs.get(sv, [])
+            if not pairs:
+                continue
+
+            y_base = max(pivot.loc[sv, g] for g in group_order)
+            bracket_offset = 0.0
+
+            for idx1, idx2, star in pairs:
+                if need_broken:
+                    ax = ax_bottom if y_base <= low_max else ax_top
+                else:
+                    ax = ax_top
+
+                trans = ax.transData
+                inv = ax.transData.inverted()
+
+                _, y_disp = trans.transform((0, y_base))
+                y_hat_disp = y_disp + LEG_PT + bracket_offset
+                y_text_disp = y_hat_disp + TEXT_PT
+                _, y_hat = inv.transform((0, y_hat_disp))
+                _, y_text = inv.transform((0, y_text_disp))
+
+                x1 = x[i_sv] + offsets[idx1]
+                x2 = x[i_sv] + offsets[idx2]
+
+                is_sig = star != "ns"
+                fs = 12 if is_sig else 9
+                fw = "bold" if is_sig else "normal"
+
+                # 宝盖头 bracket as single polyline to avoid line-cap overlap
+                tick_x = bar_width * 0.25
+                _, y_tick = inv.transform((0, y_hat_disp - tick_depth))
+
+                ax.plot(
+                    [x1 - tick_x, x1, x2, x2 + tick_x],
+                    [y_tick, y_hat, y_hat, y_tick],
+                    lw=bracket_lw, c="black",
+                )
+
+                ax.text((x1 + x2) / 2, y_text, star,
+                        ha="center", va="bottom",
+                        fontsize=fs, fontweight=fw, color="black")
+
+                bracket_offset += tick_depth + TEXT_PT + bracket_gap
+
+    # ---------- formatting ----------
+    ax_bottom.set_xticks(x)
+    ax_bottom.set_xticklabels(pivot.index)
+    ax_bottom.set_ylabel(ylabel)
+
+    if need_broken:
+        ax_top.tick_params(axis="x", bottom=False, labelbottom=False)
+        ax_top.spines["bottom"].set_visible(False)
+
+    for ax in axes:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+    axes[0].legend(frameon=False)
+
+    plt.tight_layout()
+    plt.savefig(out_png, dpi=dpi)
+    plt.close()
+
+
 def TEfamily(
     DEG_file: str,
     rmsk_file: str,
