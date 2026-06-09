@@ -7,6 +7,199 @@ from scipy.stats import mannwhitneyu
 import itertools
 import numpy as np
 
+def single_violin_plot(
+    df: pd.DataFrame,
+    value: str,
+    key: Optional[str] = None,
+    outfile: str = "violin.png",
+    xlabel: str = "",
+    ylabel: str = "Value",
+    order: Optional[List[str]] = None,
+    sort_keys: bool = True,
+    palette: str = "Set2",
+    figsize: tuple = (6, 6),
+    violin_alpha: float = 0.85,
+    point_size: float = 2,
+    show_median: bool = False,
+    threshold: Optional[float] = None,
+):
+    """Draw a single (or per-category) violin + strip plot.
+
+    When ``key`` is ``None`` a single violin is drawn for the entire
+    ``value`` column.  When ``key`` is provided, one violin is drawn
+    per unique category in that column.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data.
+    value : str
+        Column name for the numeric values (y-axis).
+    key : str or None, optional
+        Column name for x-axis categories.  ``None`` draws one
+        overall violin.
+    outfile : str, optional
+        Output image path (PNG/PDF).
+    xlabel : str, optional
+        X-axis label.
+    ylabel : str, optional
+        Y-axis label.
+    order : list of str or None, optional
+        Explicit category ordering on the x-axis.  Ignored when
+        ``key`` is ``None``.
+    sort_keys : bool, optional
+        Sort categories alphabetically when ``order`` is ``None``.
+    palette : str, optional
+        Seaborn / matplotlib colormap name.
+    figsize : tuple, optional
+        Figure size in inches.
+    violin_alpha : float, optional
+        Fill transparency of violin bodies.
+    point_size : float, optional
+        Strip-plot dot size.
+    show_median : bool, optional
+        Draw a horizontal median line inside each violin.
+    threshold : float or None, optional
+        When set, draws a red dashed horizontal line at this value
+        and displays in the legend what percentage of data points
+        fall below it (overall when ``key`` is ``None``, per
+        category otherwise).
+
+    Raises
+    ------
+    ValueError
+        If ``value`` (or ``key``, when provided) is not in
+        ``df.columns``.
+    """
+    if value not in df.columns:
+        raise ValueError(f"Value column not found: {value}")
+
+    plt.rcParams["pdf.fonttype"] = 42
+    plt.rcParams["ps.fonttype"] = 42
+    sns.set_style("whitegrid")
+
+    if key is not None:
+        if key not in df.columns:
+            raise ValueError(f"Category column not found: {key}")
+        plot_df = df[[key, value]].dropna().copy()
+        if order is None:
+            observed = plot_df[key].unique().tolist()
+            order = sorted(observed) if sort_keys else observed
+    else:
+        plot_df = df[[value]].dropna().copy()
+        plot_df["_cat"] = ""
+        key = "_cat"
+        order = [""]
+
+    n_cats = len(order)
+    base_colors = sns.color_palette(palette, n_colors=max(n_cats, 1))
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # ── violin ──────────────────────────────────────────────
+    vp = sns.violinplot(
+        data=plot_df,
+        x=key,
+        y=value,
+        cut=0,
+        order=order,
+        palette=base_colors,
+        inner="box",
+        linewidth=1.2,
+        width=0.7,
+        bw_adjust=1.2,
+        density_norm="area",
+        ax=ax,
+    )
+    for poly in ax.collections:
+        try:
+            poly.set_alpha(violin_alpha)
+            poly.set_edgecolor("black")
+            poly.set_linewidth(1.0)
+        except Exception:
+            pass
+
+    # ── strip ───────────────────────────────────────────────
+    sns.stripplot(
+        data=plot_df,
+        x=key,
+        y=value,
+        order=order,
+        color="black",
+        size=point_size,
+        alpha=0.9,
+        jitter=0.12,
+        linewidth=0,
+        ax=ax,
+    )
+
+    # ── median line ─────────────────────────────────────────
+    if show_median:
+        for i, cat in enumerate(order):
+            vals = plot_df.loc[plot_df[key] == cat, value]
+            if len(vals) > 0:
+                med = float(np.median(vals))
+                ax.hlines(
+                    y=med,
+                    xmin=i - 0.18,
+                    xmax=i + 0.18,
+                    color="black",
+                    linewidth=2.5,
+                    zorder=5,
+                )
+
+    # ── threshold line ──────────────────────────────────────
+    if threshold is not None:
+        ax.axhline(
+            y=threshold,
+            color="red",
+            linestyle="--",
+            linewidth=1.5,
+            alpha=0.8,
+            zorder=4,
+        )
+        # Compute proportion below threshold
+        below = plot_df[value] < threshold
+        pct_below = 100.0 * below.sum() / len(plot_df)
+        if key == "_cat":
+            # Single violin: one overall percentage
+            label = f"< {threshold}: {pct_below:.1f}%"
+        else:
+            # Per-category percentages
+            parts = []
+            for cat in order:
+                cat_vals = plot_df.loc[plot_df[key] == cat, value]
+                cat_pct = 100.0 * (cat_vals < threshold).sum() / len(cat_vals) if len(cat_vals) > 0 else 0.0
+                parts.append(f"{cat} {cat_pct:.1f}%")
+            label = f"< {threshold}: " + ", ".join(parts)
+        ax.legend(
+            [plt.Line2D([0], [0], color="red", linestyle="--", linewidth=1.5)],
+            [label],
+            loc="upper right",
+            fontsize=10,
+            frameon=True,
+            facecolor="white",
+            edgecolor="none",
+            framealpha=0.9,
+        )
+
+    # ── axes ────────────────────────────────────────────────
+    ax.set_xlabel(xlabel, fontsize=14)
+    ax.set_ylabel(ylabel, fontsize=14)
+    ax.tick_params(axis="x", labelsize=12)
+    ax.tick_params(axis="y", labelsize=11)
+    ax.set_ylim(0, 1)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", linestyle="--", alpha=0.25)
+
+    if key == "_cat":
+        ax.set_xticks([])
+
+    fig.tight_layout()
+    fig.savefig(outfile, dpi=600, bbox_inches="tight")
+    plt.close(fig)
+
 def paired_violin_plot(
     df: pd.DataFrame,
     key: str,
